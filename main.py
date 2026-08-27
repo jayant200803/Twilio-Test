@@ -36,8 +36,31 @@ from twilio.twiml.voice_response import VoiceResponse, Dial
 
 app = FastAPI(title="Twilio WebRTC Softphone")
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 IDENTITY = "webuser"          # the browser client's identity
-CONFIG: dict = {}             # filled in by /setup
+CONFIG: dict = {}             # filled in by /setup OR from env vars (serverless)
+
+
+def load_env_config() -> None:
+    """On serverless hosts (Vercel) in-memory /setup state doesn't survive
+    between requests, so read a pre-provisioned config from environment
+    variables instead. Set these in the Vercel dashboard. Safe no-op locally
+    when the vars aren't present."""
+    sid = os.environ.get("TWILIO_ACCOUNT_SID")
+    key_sid = os.environ.get("TWILIO_API_KEY_SID")
+    key_secret = os.environ.get("TWILIO_API_KEY_SECRET")
+    app_sid = os.environ.get("TWILIO_TWIML_APP_SID")
+    if sid and key_sid and key_secret and app_sid:
+        CONFIG.update(
+            account_sid=sid,
+            api_key_sid=key_sid,
+            api_key_secret=key_secret,
+            app_sid=app_sid,
+            phone_number=os.environ.get("TWILIO_PHONE_NUMBER", ""),
+        )
+
+
+load_env_config()
 
 
 # ---------------------------------------------------------------------------
@@ -148,12 +171,12 @@ async def voice(request: Request):
 # ---------------------------------------------------------------------------
 # Serve the dialer UI
 # ---------------------------------------------------------------------------
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 
 
 @app.get("/")
 async def index():
-    return FileResponse(os.path.join("static", "index.html"))
+    return FileResponse(os.path.join(BASE_DIR, "static", "index.html"))
 
 
 @app.get("/health")

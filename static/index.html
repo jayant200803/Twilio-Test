@@ -77,6 +77,34 @@ const pad = document.getElementById('pad');
   pad.appendChild(b);
 });
 
+// Turn a valid token into a live WebRTC device (shared by both paths below).
+function startDevice(token, identity){
+  device = new Twilio.Device(token, { codecPreferences:["opus","pcmu"] });
+  device.on("registered", ()=>{ setStatus("Connected & ready as "+identity); document.getElementById('dialCard').classList.remove('hidden'); });
+  device.on("error", (e)=>{ log("Device error: "+e.message); });
+  device.on("incoming", (call)=>{
+    currentCall = call;
+    document.getElementById('incomingText').textContent = "Incoming call from "+(call.parameters.From||"unknown");
+    document.getElementById('incomingCard').classList.remove('hidden');
+    call.on("disconnect", ()=>{ document.getElementById('incomingCard').classList.add('hidden'); });
+  });
+  device.register();
+}
+
+// If the server is already configured (e.g. via env vars on Vercel), skip the
+// setup form entirely and just get a token and connect.
+(async ()=>{
+  try{
+    const h = await (await fetch("/health")).json();
+    if(h.configured){
+      document.getElementById('setupCard').classList.add('hidden');
+      const tj = await (await fetch("/token")).json();
+      if(tj.token){ startDevice(tj.token, tj.identity); }
+      else { document.getElementById('setupCard').classList.remove('hidden'); }
+    }
+  }catch(e){ /* fall back to manual setup */ }
+})();
+
 document.getElementById('connectBtn').onclick = async ()=>{
   const sid=document.getElementById('sid').value.trim();
   const tok=document.getElementById('tok').value.trim();
@@ -100,16 +128,7 @@ document.getElementById('connectBtn').onclick = async ()=>{
     const tj = await t.json();
     if(!tj.token){ setStatus("Token error: "+(tj.detail||"")); return; }
 
-    device = new Twilio.Device(tj.token, { codecPreferences:["opus","pcmu"] });
-    device.on("registered", ()=>{ setStatus("Connected & ready as "+tj.identity); document.getElementById('dialCard').classList.remove('hidden'); });
-    device.on("error", (e)=>{ log("Device error: "+e.message); });
-    device.on("incoming", (call)=>{
-      currentCall = call;
-      document.getElementById('incomingText').textContent = "Incoming call from "+(call.parameters.From||"unknown");
-      document.getElementById('incomingCard').classList.remove('hidden');
-      call.on("disconnect", ()=>{ document.getElementById('incomingCard').classList.add('hidden'); });
-    });
-    device.register();
+    startDevice(tj.token, tj.identity);
   }catch(e){ setStatus("Error: "+e.message); log(e.message); }
 };
 
