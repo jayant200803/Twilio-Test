@@ -29,6 +29,7 @@
 <body>
 <div class="wrap">
   <h1>📞 Twilio WebRTC Softphone</h1>
+  <div id="topStatus" style="font-size:13px;color:#b9a7f0;margin-bottom:12px;min-height:18px;">Loading…</div>
 
   <div class="card" id="setupCard">
     <label>Twilio Account SID</label>
@@ -67,7 +68,7 @@
 let device = null;
 let currentCall = null;
 const log = (m)=>{ const l=document.getElementById('log'); l.textContent += m+"\n"; l.scrollTop=l.scrollHeight; };
-const setStatus = (m)=>{ document.getElementById('status').textContent=m; };
+const setStatus = (m)=>{ document.getElementById('status').textContent=m; document.getElementById('topStatus').textContent=m; };
 
 // build dial pad
 const pad = document.getElementById('pad');
@@ -79,9 +80,12 @@ const pad = document.getElementById('pad');
 
 // Turn a valid token into a live WebRTC device (shared by both paths below).
 function startDevice(token, identity){
+  if(typeof Twilio==="undefined"){ setStatus("Twilio SDK failed to load (network/adblock?)."); return; }
+  setStatus("Registering with Twilio…");
+  document.getElementById('dialCard').classList.remove('hidden');   // show dialer right away
   device = new Twilio.Device(token, { codecPreferences:["opus","pcmu"] });
-  device.on("registered", ()=>{ setStatus("Connected & ready as "+identity); document.getElementById('dialCard').classList.remove('hidden'); });
-  device.on("error", (e)=>{ log("Device error: "+e.message); });
+  device.on("registered", ()=>{ setStatus("Connected & ready as "+identity); });
+  device.on("error", (e)=>{ setStatus("Device error: "+e.message); log("Device error: "+e.message); });
   device.on("incoming", (call)=>{
     currentCall = call;
     document.getElementById('incomingText').textContent = "Incoming call from "+(call.parameters.From||"unknown");
