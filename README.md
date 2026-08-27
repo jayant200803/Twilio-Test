@@ -14,6 +14,52 @@ Built by Jayant Raj.
 
 ---
 
+## Current status (deployed & demonstrated)
+
+- **Live deployment:** `https://twilio-test-eosin-three.vercel.app` (Vercel, serverless).
+- **WebRTC connection: working end-to-end.** The browser loads the Twilio Voice
+  JavaScript SDK, fetches a signed Access Token from the backend, and registers
+  with Twilio over WebRTC — the UI shows **"Connected & ready as webuser"** and
+  presents the dialpad.
+- **Backend verified:** `/health` reports `configured: true`; `/token` returns a
+  valid JWT; `/voice` returns correct inbound TwiML
+  (`<Response><Dial><Client>webuser</Client></Dial></Response>`).
+
+### Trial-account limitations (not code issues)
+
+The Twilio account used is a **Trial** account, which blocks the two Twilio-side
+resources needed to place/receive a *real* PSTN call. These are account limits,
+not app bugs:
+
+| Task requirement | Blocked by trial because… |
+|---|---|
+| **Outbound** call | Trial accounts cannot create a **TwiML App** (`outgoing_application_sid`), which the Voice SDK requires to dial out. |
+| **Inbound** call | The trial owns **no configurable phone number** — buying/searching numbers returns *"This feature is not available on a Trial account."* |
+
+To make both directions work, **upgrade the Twilio account** (adds usable call
+credit). Then: buy a Voice-capable number, create a TwiML App named
+`softphone-app`, and either use the in-app `/setup` flow or set the env vars
+below. The code already supports both paths — see `load_env_config()` in
+`main.py` and the inbound-only fallback (works without a TwiML App).
+
+### Serverless config (Vercel env vars)
+
+Because Vercel is stateless, the app reads config from environment variables
+instead of the in-memory `/setup` flow:
+
+| Env var | Purpose |
+|---|---|
+| `TWILIO_ACCOUNT_SID` | Account SID |
+| `TWILIO_API_KEY_SID` | API Key SID (signs access tokens) |
+| `TWILIO_API_KEY_SECRET` | API Key secret |
+| `TWILIO_TWIML_APP_SID` | TwiML App SID — **optional**; omit for inbound-only |
+| `TWILIO_PHONE_NUMBER` | Your Twilio number (caller ID) |
+
+`set_webhook.py` is a helper that points an owned number's incoming-call webhook
+at the deployed `/voice` (used once you have a number after upgrading).
+
+---
+
 ## How it works (the architecture)
 
 ```
