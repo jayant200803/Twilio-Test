@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Twilio WebRTC Softphone</title>
+<script src="https://sdk.twilio.com/js/voice/releases/2.11.1/twilio.min.js"></script>
+<style>
+  body{font-family:system-ui,Arial,sans-serif;background:#0f1220;color:#e9e7f5;margin:0;padding:24px;}
+  .wrap{max-width:460px;margin:0 auto;}
+  h1{font-size:20px;color:#b9a7f0;}
+  .card{background:#1a1d33;border:1px solid #2c2f52;border-radius:12px;padding:16px;margin-bottom:16px;}
+  label{display:block;font-size:12px;color:#9a97b8;margin:8px 0 4px;}
+  input{width:100%;box-sizing:border-box;padding:10px;border-radius:8px;border:1px solid #3a3d63;background:#12142a;color:#fff;font-size:14px;}
+  button{border:0;border-radius:8px;padding:12px 16px;font-size:15px;font-weight:600;cursor:pointer;}
+  .primary{background:#6d5bd0;color:#fff;width:100%;margin-top:12px;}
+  .call{background:#22a06b;color:#fff;}
+  .hang{background:#d1495b;color:#fff;}
+  .row{display:flex;gap:8px;margin-top:10px;}
+  .row button{flex:1;}
+  .dialpad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px;}
+  .dialpad button{background:#2a2d4d;color:#fff;padding:14px;font-size:18px;}
+  #status{font-size:13px;color:#9a97b8;margin-top:10px;min-height:18px;}
+  #log{font-size:12px;color:#7c7a99;margin-top:10px;max-height:120px;overflow:auto;white-space:pre-wrap;}
+  .hidden{display:none;}
+  .incoming{background:#2a2340;border:1px solid #6d5bd0;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>📞 Twilio WebRTC Softphone</h1>
+
+  <div class="card" id="setupCard">
+    <label>Twilio Account SID</label>
+    <input id="sid" placeholder="ACxxxxxxxx..."/>
+    <label>Twilio Auth Token</label>
+    <input id="tok" type="password" placeholder="your auth token"/>
+    <label>Your Twilio Phone Number</label>
+    <input id="num" placeholder="+1234567890"/>
+    <button class="primary" id="connectBtn">Set up & Connect</button>
+    <div id="status">Not connected.</div>
+  </div>
+
+  <div class="card hidden" id="dialCard">
+    <label>Call a number</label>
+    <input id="dest" placeholder="+1987654321"/>
+    <div class="dialpad" id="pad"></div>
+    <div class="row">
+      <button class="call" id="callBtn">Call</button>
+      <button class="hang" id="hangBtn">Hang up</button>
+    </div>
+    <div id="status2">Ready.</div>
+  </div>
+
+  <div class="card incoming hidden" id="incomingCard">
+    <div id="incomingText">Incoming call…</div>
+    <div class="row">
+      <button class="call" id="acceptBtn">Accept</button>
+      <button class="hang" id="rejectBtn">Reject</button>
+    </div>
+  </div>
+
+  <div id="log"></div>
+</div>
+
+<script>
+let device = null;
+let currentCall = null;
+const log = (m)=>{ const l=document.getElementById('log'); l.textContent += m+"\n"; l.scrollTop=l.scrollHeight; };
+const setStatus = (m)=>{ document.getElementById('status').textContent=m; };
+
+// build dial pad
+const pad = document.getElementById('pad');
+["1","2","3","4","5","6","7","8","9","*","0","#"].forEach(d=>{
+  const b=document.createElement('button'); b.textContent=d;
+  b.onclick=()=>{ const dest=document.getElementById('dest'); dest.value+=d; if(currentCall) currentCall.sendDigits(d); };
+  pad.appendChild(b);
+});
+
+document.getElementById('connectBtn').onclick = async ()=>{
+  const sid=document.getElementById('sid').value.trim();
+  const tok=document.getElementById('tok').value.trim();
+  const num=document.getElementById('num').value.trim();
+  if(!sid||!tok||!num){ setStatus("Fill in all three fields."); return; }
+  setStatus("Setting up with Twilio…");
+
+  const fd = new FormData();
+  fd.append("account_sid", sid);
+  fd.append("auth_token", tok);
+  fd.append("phone_number", num);
+  fd.append("base_url", window.location.origin);
+
+  try{
+    const s = await fetch("/setup", {method:"POST", body:fd});
+    const sj = await s.json();
+    if(sj.status!=="ok"){ setStatus("Setup failed: "+sj.detail); return; }
+    log("Setup ok. TwiML app: "+sj.twiml_app_sid);
+
+    const t = await fetch("/token");
+    const tj = await t.json();
+    if(!tj.token){ setStatus("Token error: "+(tj.detail||"")); return; }
+
+    device = new Twilio.Device(tj.token, { codecPreferences:["opus","pcmu"] });
+    device.on("registered", ()=>{ setStatus("Connected & ready as "+tj.identity); document.getElementById('dialCard').classList.remove('hidden'); });
+    device.on("error", (e)=>{ log("Device error: "+e.message); });
+    device.on("incoming", (call)=>{
+      currentCall = call;
+      document.getElementById('incomingText').textContent = "Incoming call from "+(call.parameters.From||"unknown");
+      document.getElementById('incomingCard').classList.remove('hidden');
+      call.on("disconnect", ()=>{ document.getElementById('incomingCard').classList.add('hidden'); });
+    });
+    device.register();
+  }catch(e){ setStatus("Error: "+e.message); log(e.message); }
+};
+
+document.getElementById('callBtn').onclick = async ()=>{
+  const dest=document.getElementById('dest').value.trim();
+  if(!device||!dest){ return; }
+  document.getElementById('status2').textContent="Calling "+dest+"…";
+  currentCall = await device.connect({ params:{ PhoneNumber: dest } });
+  currentCall.on("accept", ()=>document.getElementById('status2').textContent="In call.");
+  currentCall.on("disconnect", ()=>document.getElementById('status2').textContent="Call ended.");
+};
+document.getElementById('hangBtn').onclick = ()=>{ if(device) device.disconnectAll(); document.getElementById('status2').textContent="Hung up."; };
+document.getElementById('acceptBtn').onclick = ()=>{ if(currentCall){ currentCall.accept(); document.getElementById('incomingCard').classList.add('hidden'); } };
+document.getElementById('rejectBtn').onclick = ()=>{ if(currentCall){ currentCall.reject(); document.getElementById('incomingCard').classList.add('hidden'); } };
+</script>
+</body>
+</html>
