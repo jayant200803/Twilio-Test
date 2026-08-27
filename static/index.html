@@ -99,7 +99,15 @@ function startDevice(token, identity){
     if(h.configured){
       document.getElementById('setupCard').classList.add('hidden');
       const tj = await (await fetch("/token")).json();
-      if(tj.token){ startDevice(tj.token, tj.identity); }
+      if(tj.token){
+        startDevice(tj.token, tj.identity);
+        if(!h.outbound){
+          // Trial account with no TwiML App: receiving works, calling doesn't.
+          const cb=document.getElementById('callBtn');
+          cb.disabled=true; cb.textContent="Outbound disabled (trial)";
+          document.getElementById('status2').textContent="Inbound-only: call your Twilio number to make this ring.";
+        }
+      }
       else { document.getElementById('setupCard').classList.remove('hidden'); }
     }
   }catch(e){ /* fall back to manual setup */ }

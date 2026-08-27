@@ -49,13 +49,15 @@ def load_env_config() -> None:
     sid = os.environ.get("TWILIO_ACCOUNT_SID")
     key_sid = os.environ.get("TWILIO_API_KEY_SID")
     key_secret = os.environ.get("TWILIO_API_KEY_SECRET")
+    # app_sid (a TwiML App) is only needed for OUTBOUND calls. Trial accounts
+    # can't create one, so it's optional — without it, inbound calls still work.
     app_sid = os.environ.get("TWILIO_TWIML_APP_SID")
-    if sid and key_sid and key_secret and app_sid:
+    if sid and key_sid and key_secret:
         CONFIG.update(
             account_sid=sid,
             api_key_sid=key_sid,
             api_key_secret=key_secret,
-            app_sid=app_sid,
+            app_sid=app_sid,          # may be None (inbound-only)
             phone_number=os.environ.get("TWILIO_PHONE_NUMBER", ""),
         )
 
@@ -129,10 +131,12 @@ async def token():
         CONFIG["account_sid"], CONFIG["api_key_sid"], CONFIG["api_key_secret"],
         identity=IDENTITY,
     )
-    at.add_grant(VoiceGrant(
-        outgoing_application_sid=CONFIG["app_sid"],
-        incoming_allow=True,          # allow this client to RECEIVE calls
-    ))
+    # incoming_allow lets this client RECEIVE calls. outgoing_application_sid is
+    # only needed to MAKE calls; omit it when there's no TwiML App (trial).
+    grant = VoiceGrant(incoming_allow=True)
+    if CONFIG.get("app_sid"):
+        grant.outgoing_application_sid = CONFIG["app_sid"]
+    at.add_grant(grant)
     jwt = at.to_jwt()
     if isinstance(jwt, bytes):
         jwt = jwt.decode()
@@ -181,4 +185,8 @@ async def index():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "configured": bool(CONFIG)}
+    return {
+        "status": "ok",
+        "configured": bool(CONFIG),
+        "outbound": bool(CONFIG.get("app_sid")),   # False on trial (no TwiML App)
+    }
