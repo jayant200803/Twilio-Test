@@ -42,6 +42,11 @@
     <div id="status">Not connected.</div>
   </div>
 
+  <div class="card hidden" id="connectCard">
+    <div style="margin-bottom:10px;">Ready to connect. Click below to enable audio and go online.</div>
+    <button class="primary" id="goConnectBtn" style="margin-top:0;">🔊 Connect (enable audio)</button>
+  </div>
+
   <div class="card hidden" id="dialCard">
     <label>Call a number</label>
     <input id="dest" placeholder="+1987654321"/>
@@ -104,13 +109,21 @@ function startDevice(token, identity){
       document.getElementById('setupCard').classList.add('hidden');
       const tj = await (await fetch("/token")).json();
       if(tj.token){
-        startDevice(tj.token, tj.identity);
-        if(!h.outbound){
-          // Trial account with no TwiML App: receiving works, calling doesn't.
-          const cb=document.getElementById('callBtn');
-          cb.disabled=true; cb.textContent="Outbound disabled (trial)";
-          document.getElementById('status2').textContent="Inbound-only: call your Twilio number to make this ring.";
-        }
+        // Browser autoplay policy: the audio engine can only start from a real
+        // user gesture. So we wait for a click before creating the device.
+        setStatus("Ready — click Connect to enable audio.");
+        const connectCard=document.getElementById('connectCard');
+        connectCard.classList.remove('hidden');
+        document.getElementById('goConnectBtn').onclick = async ()=>{
+          connectCard.classList.add('hidden');
+          try{ if(window.AudioContext){ await new AudioContext().resume().catch(()=>{}); } }catch(e){}
+          startDevice(tj.token, tj.identity);
+          if(!h.outbound){
+            const cb=document.getElementById('callBtn');
+            cb.disabled=true; cb.textContent="Outbound disabled (trial)";
+            document.getElementById('status2').textContent="Inbound-only: call your Twilio number to make this ring.";
+          }
+        };
       }
       else { document.getElementById('setupCard').classList.remove('hidden'); }
     }
