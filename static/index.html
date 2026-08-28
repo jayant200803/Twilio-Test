@@ -91,6 +91,13 @@ function startDevice(token, identity){
   device = new Twilio.Device(token, { codecPreferences:["opus","pcmu"] });
   device.on("registered", ()=>{ setStatus("Connected & ready as "+identity); });
   device.on("error", (e)=>{ setStatus("Device error: "+e.message); log("Device error: "+e.message); });
+  // Access tokens live ~1h; refresh before expiry so a long-open tab stays valid.
+  device.on("tokenWillExpire", async ()=>{
+    try{
+      const tj = await (await fetch("/token")).json();
+      if(tj.token){ device.updateToken(tj.token); log("Access token refreshed."); }
+    }catch(e){ log("Token refresh failed: "+e.message); }
+  });
   device.on("incoming", (call)=>{
     currentCall = call;
     document.getElementById('incomingText').textContent = "Incoming call from "+(call.parameters.From||"unknown");
